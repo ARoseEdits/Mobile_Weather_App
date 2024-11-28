@@ -17,6 +17,7 @@ export default function NotFoundScreen() {
     </>
   );
 }
+// want to add sad cloud img to this page 
 
 const styles = StyleSheet.create({
   container: {
