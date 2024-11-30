@@ -73,8 +73,8 @@ export default function TabsLayout() {
       ),
       }}
       />
-      <Tabs.Screen
+      {/* <Tabs.Screen
       name=SearchBar={SearchBar}
-      />
+      /> */}
     </Tabs>
 )}
