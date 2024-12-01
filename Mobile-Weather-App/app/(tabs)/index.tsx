@@ -1,153 +1,239 @@
-import { Text, View, Image, StyleSheet, Platform, ActivityIndicator } from 'react-native';
+import React, { useEffect, useState } from 'react';
+import { View, Text, TextInput, Button, StyleSheet } from 'react-native';
 import * as Location from 'expo-location';
-import { useEffect, useState } from 'react';
-import { error } from 'console';
-import React from 'react';
-import axios from 'axios';
 
+// Define the structure of the API response
+interface ResponseBody {
+    temperature: number;
+    condition: string;
+    location: string;
+}
 
-//  weather Information API 
-const WeatherApp = () => {
-  const [location, setLocation] = useState<Location.LocationObjectCoords|null>(null);
-  const [errorMsg, setErrorMsg] = useState<string>("");
-  const [textMsg, settextMsg] = useState<string>("waiting...");
+interface Coordinates {
+    latitude: number;
+    longitude: number;
+}
 
-  useEffect(() => {
-    (async () => {
-      let { status } = await Location.requestForegroundPermissionsAsync();
-      if (status !== 'granted') {
-        setErrorMsg('Permission to access location was denied');
-        settextMsg(errorMsg);
-        return;
-      }
-
-      let loc = await Location.getCurrentPositionAsync({});
-      setLocation(loc.coords); // { latitude, longitude }
-      settextMsg(`Latitude: ${loc.coords.latitude}, Longitude: ${loc.coords.longitude}`);
-    })();
-  }, []);
-
-// if i change from tsx to jsx the number vaule for latitude and longitude stop working 
-const fetchWeather = async (latitude:number, longitude:number) => {
-    const apiKey = '799d910d15b831d9c04e2c7af42b8483';
-    const url = `https://api.openweathermap.org/data/2.5/weather?lat=${latitude}&lon=${longitude}&appid=${apiKey}`;
+// Function to fetch weather data by city name
+async function fetchWeatherData(city: string): Promise<ResponseBody> {
     try {
-      const response = await fetch(url);
-      const data = await response.json();
-      console.log(data);
-      return data; // Contains weather information
+        const API_KEY = 'cc5e50ccf2947060ae850988803ffc3a';
+        const response = await fetch(
+            `https://api.openweathermap.org/data/2.5/weather?q=${city}&appid=${API_KEY}&units=metric`
+        );
+
+        if (!response.ok) {
+            if (response.status === 404) {
+                throw new Error('City not found');
+            }
+            throw new Error('Failed to fetch weather data');
+        }
+
+        const data = await response.json();
+        const weatherData: ResponseBody = {
+            temperature: data.main.temp,
+            condition: data.weather[0].description,
+            location: `${data.name}, ${data.sys.country}`,
+        };
+
+        return weatherData;
     } catch (error) {
-      console.error(error);
+        console.error('Fetch error:', error);
+        throw error;
     }
-  };
+}
 
-  useEffect(() => {
-    (async () => {
-      let { status } = await Location.requestForegroundPermissionsAsync();
-      if (status !== 'granted') {
-        setErrorMsg('Permission to access location was denied');
-        return;
-      }
-  
-      let loc = await Location.getCurrentPositionAsync({});
-      setLocation(loc.coords);
-  
-      // Fetch weather
-      const weatherData = await fetchWeather(loc.coords.latitude, loc.coords.longitude);
-      console.log(weatherData);
-    })();
-  }, []);
+// Function to fetch weather data by geolocation
+async function fetchWeatherByLocation(latitude: number, longitude: number): Promise<ResponseBody> {
+    try {
+        const API_KEY = 'cc5e50ccf2947060ae850988803ffc3a';
+        const response = await fetch(
+            `https://api.openweathermap.org/data/2.5/weather?lat=${latitude}&lon=${longitude}&appid=${API_KEY}&units=metric`
+        );
 
-  return (
-    <View>
-      <Text>{textMsg}</Text>
-    </View>
-  );
+        if (!response.ok) {
+            throw new Error('Failed to fetch weather data');
+        }
+
+        const data = await response.json();
+        const weatherData: ResponseBody = {
+            temperature: data.main.temp,
+            condition: data.weather[0].description,
+            location: `${data.name}, ${data.sys.country}`,
+        };
+
+        return weatherData;
+    } catch (error) {
+        console.error('Fetch error:', error);
+        throw error;
+    }
+}
+
+// Main WeatherApp component
+const WeatherApp: React.FC = () => {
+    const [weather, setWeather] = useState<ResponseBody | null>(null);
+    const [error, setError] = useState<string | null>(null);
+    const [city, setCity] = useState<string>('');
+    const [inputLocation, setInputLocation] = useState<string>('');
+    const [loading, setLoading] = useState<boolean>(false);
+
+    // Function to fetch weather by geolocation
+    const getCurrentLocation = async () => {
+        try {
+            setLoading(true);
+            setError(null);
+
+            const { status } = await Location.requestForegroundPermissionsAsync();
+            if (status !== 'granted') {
+                setError('Permission to access location was denied');
+                setLoading(false);
+                return;
+            }
+
+            const location = await Location.getCurrentPositionAsync({});
+            const { latitude, longitude } = location.coords;
+
+            const weatherData = await fetchWeatherByLocation(latitude, longitude);
+            setWeather(weatherData);
+        } catch (err) {
+            console.error('Error fetching location or weather:', err);
+            setError('Failed to fetch weather data for your location');
+        } finally {
+            setLoading(false);
+        }
+    };
+
+    // Function to fetch weather by city name
+    const handleFetchWeather = async () => {
+        if (inputLocation.trim() !== '') {
+            try {
+                setLoading(true);
+                const data = await fetchWeatherData(inputLocation.trim());
+                setWeather(data);
+                setError(null);
+                setInputLocation('');
+            } catch (err) {
+                setError('Failed to fetch weather data for the given location');
+            } finally {
+                setLoading(false);
+            }
+        }
+    };
+
+    return (
+        <View style={styles.container}>
+            <Text style={styles.title}>Weather App</Text>
+
+            <View style={styles.inputContainer}>
+                <TextInput
+                    style={styles.input}
+                    placeholder="Enter location"
+                    value={inputLocation}
+                    onChangeText={setInputLocation}
+                />
+                <Button title="Get Weather" onPress={handleFetchWeather} />
+                <Button title="Use Current Location" onPress={getCurrentLocation} />
+            </View>
+
+            {error && (
+                <View style={styles.errorContainer}>
+                    <Text style={styles.errorText}>{error}</Text>
+                </View>
+            )}
+
+            {loading ? (
+                <View style={styles.loadingContainer}>
+                    <Text style={styles.loadingText}>Fetching weather data...</Text>
+                </View>
+            ) : weather ? (
+                <View style={styles.weatherContainer}>
+                    <Text style={styles.locationText}>{weather.location}</Text>
+                    <Text style={styles.tempText}>{weather.temperature}°C</Text>
+                    <Text style={styles.conditionText}>{weather.condition}</Text>
+                </View>
+            ) : null}
+        </View>
+    );
 };
 
-// og working Screen View - no data connection 
-// export default function HomeScreen() {
-//   return (
-//     <View
-//     style={styles.container}
-// >
-//     const Location: () => React.JSX.Element
-//     <Text style={styles.h1}> Location </Text>
-//     {/* give coords */}
-//     <Text style={styles.h1}> {setLocation} </Text>
-//     const WeatherApp: () => React.JSX.Element
-//     <Text style={styles.text}> Weather Condition </Text>
-//     {/* fetch thedata from openWeatherAPI for the below condition*/}
-//     <Text style={styles.text}> {WeatherApp} </Text>
-//     {/* <Location = require("../../Mobile-Weather-App\components\geolocation.tsx") */}
-//     <Text style={styles.text}>Temperature</Text>
-//     <Text style={styles.text}>Humidity</Text>
-//     <Text style={styles.text}>Conditions</Text>
-// //     </View> 
-// )}
+export default WeatherApp;
 
-
-// below didn't work because the two const items were already declared
-// const WeatherApp: () => React.JSX.Element = () => {
-//   return (
-//     <View style={styles.container}>
-//       <Text style={styles.h1}>Weather App</Text>
-//       <Text>Welcome! Check today's weather.</Text>
-//     </View>
-//   );
-// };
-// const Location: () => React.JSX.Element = () => {
-//   return (
-//     <View style={styles.container}>
-//       <Text style={styles.h1}>Location Coordinates</Text>
-//     </View>
-//   );
-// };
-
-// below is the attempt the use the fetch funtion the rechieve the data
-function fetch (Temperature, condition) {WeatherApp}: Promise<Response.body> (+2 overloads)
-
-
-// Connecting the APi to the Screen View- didn't work, not using view funtion, needs view funtion to show up of screeen? not actully connected to the weather API 
-type GetContentProps = {
-  loading: boolean;
-  error: boolean;
-  response: {temp, weather} 
-};
-
-const getContent = ({ loading, error, response }: GetContentProps): JSX.Element => {
-  if (loading) {
-    return <ActivityIndicator size="large" />;
-  }
-
-  if (error) {
-    return <Text>Oops... where are you?</Text>;
-  }
-
-  console.log(response);
-
-  return <Text>Today's Weather</Text>;
-};
-
-export default getContent;
-
-
+// Styles
 const styles = StyleSheet.create({
   container: {
-    flex: 1,
-    justifyContent: "center",
-    alignItems: "center",
-    backgroundColor: "lightblue",
+      flex: 1,
+      padding: 20,
+      backgroundColor: '#f0f8ff',
+      justifyContent: 'center',
   },
-
-  text:{
-    color: "darkblue", 
-    fontFamily: "helvetica"
+  title: {
+      fontSize: 30,
+      fontWeight: 'bold',
+      textAlign: 'center',
+      color: '#333',
+      marginBottom: 20,
   },
-
-  h1: {
-    fontSize: 24,
-    color: "darkblue", 
-    fontFamily: "helvetica"
-  }
-})
+  inputContainer: {
+      marginBottom: 20,
+      alignItems: 'stretch',
+  },
+  input: {
+      borderColor: '#ccc',
+      borderWidth: 1,
+      padding: 12,
+      borderRadius: 8,
+      backgroundColor: '#fff',
+      fontSize: 16,
+      marginBottom: 15,
+  },
+  buttonContainer: {
+      alignItems: 'stretch',
+  },
+  button: {
+      marginBottom: 10,
+  },
+  weatherContainer: {
+      alignItems: 'center',
+      marginTop: 30,
+      padding: 20,
+      borderRadius: 10,
+      backgroundColor: '#e6f7ff',
+  },
+  locationText: {
+      fontSize: 22,
+      fontWeight: '600',
+      color: '#333',
+      marginBottom: 10,
+  },
+  tempText: {
+      fontSize: 50,
+      fontWeight: 'bold',
+      color: '#000',
+      marginVertical: 10,
+  },
+  conditionText: {
+      fontSize: 18,
+      fontStyle: 'italic',
+      color: '#555',
+  },
+  loadingContainer: {
+      alignItems: 'center',
+      marginTop: 20,
+  },
+  loadingText: {
+      marginTop: 10,
+      fontSize: 16,
+      color: '#555',
+  },
+  errorContainer: {
+      marginTop: 20,
+      padding: 10,
+      borderRadius: 8,
+      backgroundColor: '#ffe6e6',
+  },
+  errorText: {
+      color: 'red',
+      fontSize: 16,
+      textAlign: 'center',
+  },
+});
